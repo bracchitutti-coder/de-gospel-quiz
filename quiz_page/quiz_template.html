@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evanjelium dňa · Tagesevangelium</title>
+<style>
+:root {
+  --ink-950: #1B2333;
+  --ink-900: #232C40;
+  --dawn-600: #4A5B82;
+  --gold-400: #C9A24B;
+  --gold-300: #DDBE76;
+  --paper-100: #F2EEE3;
+  --paper-050: #FAF8F2;
+  --rust-500: #A6483A;
+  --rust-100: #F0DAD5;
+  --sage-500: #6B8F71;
+  --sage-100: #DCE6DD;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper-050);
+  color: var(--ink-950);
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dawn-band {
+  height: 156px;
+  background: linear-gradient(180deg, var(--ink-950) 0%, var(--dawn-600) 62%, var(--gold-300) 100%);
+  position: relative;
+  overflow: hidden;
+}
+.dawn-band::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -60px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--gold-300) 0%, rgba(221,190,118,0) 70%);
+  transform: translateX(-50%);
+  opacity: 0.85;
+}
+
+.wrap {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 0 20px 64px;
+}
+
+.header-card {
+  margin-top: -64px;
+  position: relative;
+  background: var(--paper-100);
+  border-radius: var(--radius);
+  padding: 22px 24px 20px;
+  box-shadow: 0 12px 32px -12px rgba(27,35,51,0.35);
+}
+
+.rubric {
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rust-500);
+}
+
+.feast {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 21px;
+  font-weight: 500;
+  margin: 6px 0 2px;
+  line-height: 1.25;
+}
+
+.citation {
+  font-size: 13px;
+  color: var(--dawn-600);
+  font-weight: 600;
+}
+
+.section {
+  margin-top: 26px;
+}
+
+.reread {
+  background: var(--paper-100);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.reread summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 14.5px;
+}
+.reread summary::-webkit-details-marker { display: none; }
+.reread summary::after {
+  content: "+";
+  font-size: 20px;
+  color: var(--gold-400);
+  font-weight: 400;
+  transition: transform 0.2s ease;
+}
+.reread[open] summary::after { transform: rotate(45deg); }
+
+.reread-body { padding: 0 20px 22px; }
+
+.lang-block { margin-bottom: 18px; }
+.lang-block:last-child { margin-bottom: 0; }
+
+.lang-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold-400);
+  margin-bottom: 6px;
+}
+
+.gospel-text {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 16.5px;
+  line-height: 1.62;
+  color: var(--ink-900);
+  white-space: pre-line;
+}
+
+.vocab-list {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(74,91,130,0.18);
+}
+
+.vocab-item {
+  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.vocab-item:last-child { margin-bottom: 0; }
+
+.vocab-word {
+  font-weight: 700;
+  color: var(--ink-950);
+}
+
+.vocab-meaning { color: var(--dawn-600); }
+.vocab-sk { color: var(--rust-500); font-weight: 500; }
+
+.vocab-note {
+  display: block;
+  font-size: 12.5px;
+  color: var(--rust-500);
+  margin-top: 2px;
+}
+
+/* Quiz */
+.quiz-card {
+  background: var(--paper-100);
+  border-radius: var(--radius);
+  padding: 24px 22px 22px;
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+}
+
+.progress-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.progress-dot {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(74,91,130,0.2);
+  transition: background 0.25s ease;
+}
+.progress-dot.done { background: var(--gold-400); }
+.progress-dot.current { background: var(--dawn-600); }
+
+.question-text {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 20px;
+}
+
+.options { display: flex; flex-direction: column; gap: 10px; }
+
+.option {
+  text-align: left;
+  border: 1.5px solid rgba(74,91,130,0.25);
+  background: var(--paper-050);
+  border-radius: 10px;
+  padding: 13px 16px;
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  font-size: 14.5px;
+  color: var(--ink-950);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+.option:hover:not(:disabled) {
+  border-color: var(--gold-400);
+}
+.option:active:not(:disabled) { transform: scale(0.99); }
+.option:disabled { cursor: default; }
+
+.option.correct {
+  border-color: var(--sage-500);
+  background: var(--sage-100);
+  font-weight: 600;
+}
+.option.incorrect {
+  border-color: var(--rust-500);
+  background: var(--rust-100);
+}
+
+.feedback {
+  margin-top: 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.feedback.correct { color: var(--sage-500); }
+.feedback.incorrect { color: var(--rust-500); }
+
+.next-btn {
+  margin-top: auto;
+  padding-top: 20px;
+}
+.next-btn button {
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 10px;
+  background: var(--ink-950);
+  color: var(--paper-100);
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.next-btn button.visible { opacity: 1; pointer-events: auto; }
+.next-btn button:hover { background: var(--dawn-600); }
+
+/* Completion */
+.completion {
+  text-align: center;
+  padding: 8px 4px 4px;
+}
+.completion-eyebrow {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold-400);
+}
+.completion-score {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 44px;
+  font-weight: 600;
+  margin: 10px 0 4px;
+  color: var(--ink-950);
+}
+.completion-msg {
+  font-size: 14.5px;
+  color: var(--dawn-600);
+  margin-bottom: 22px;
+  line-height: 1.5;
+}
+.completion .option { cursor: default; }
+.completion .review-label {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rust-500);
+  margin: 22px 0 10px;
+}
+.review-q {
+  text-align: left;
+  font-size: 13.5px;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.review-q .q-title { font-weight: 600; margin-bottom: 3px; }
+.review-q .q-answer.right { color: var(--sage-500); }
+.review-q .q-answer.wrong { color: var(--rust-500); }
+
+.footer-note {
+  text-align: center;
+  font-size: 12px;
+  color: var(--dawn-600);
+  margin-top: 28px;
+  opacity: 0.75;
+}
+</style>
+</head>
+<body>
+
+<div class="dawn-band"></div>
+
+<div class="wrap">
+
+  <div class="header-card">
+    <div class="rubric" id="rubric-date"></div>
+    <div class="feast" id="feast-name"></div>
+    <div class="citation" id="citation-line"></div>
+  </div>
+
+  <div class="section">
+    <details class="reread" id="reread">
+      <summary>Text ešte raz · Text noch einmal lesen</summary>
+      <div class="reread-body">
+        <div class="lang-block">
+          <div class="lang-label">Slovensky</div>
+          <div class="gospel-text" id="sk-text"></div>
+        </div>
+        <div class="lang-block">
+          <div class="lang-label">Deutsch</div>
+          <div class="gospel-text" id="de-text"></div>
+        </div>
+        <div class="vocab-list" id="vocab-list"></div>
+      </div>
+    </details>
+  </div>
+
+  <div class="section">
+    <div class="quiz-card" id="quiz-card"></div>
+  </div>
+
+  <div class="footer-note">Denné cvičenie nemčiny · Tägliche Deutschübung</div>
+
+</div>
+
+<script>
+// --- Day's data: in production this block is templated per day from the
+// build_daily_email() payload (gospel_scraper.py + vocab_quiz_generator.py).
+// Using the real, tested 8 Feb 2026 output (Mt 5:13-16, salt and light) here.
+const DAY = /*__DAY_JSON__*/;
+
+// --- Header ---
+function formatDate(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+document.getElementById('rubric-date').textContent = formatDate(DAY.date);
+document.getElementById('feast-name').textContent = DAY.feast_sk;
+document.getElementById('citation-line').textContent = DAY.citation_sk + "  ·  " + DAY.citation_de;
+document.getElementById('sk-text').textContent = DAY.sk_text;
+document.getElementById('de-text').textContent = DAY.de_text;
+
+const vocabList = document.getElementById('vocab-list');
+DAY.vocabulary.forEach(v => {
+  const div = document.createElement('div');
+  div.className = 'vocab-item';
+  div.innerHTML = `<span class="vocab-word">${v.word}</span>` +
+    (v.meaning_sk ? ` <span class="vocab-sk">(${v.meaning_sk})</span>` : '') +
+    ` — <span class="vocab-meaning">${v.meaning_de}</span>` +
+    (v.register_note ? `<span class="vocab-note">${v.register_note}</span>` : '');
+  vocabList.appendChild(div);
+});
+
+// --- Quiz state machine ---
+const quizCard = document.getElementById('quiz-card');
+let current = 0;
+let answered = false;
+let selectedIndex = null;
+const results = new Array(DAY.quiz.length).fill(null);
+
+function renderProgress() {
+  let html = '<div class="progress-row">';
+  for (let i = 0; i < DAY.quiz.length; i++) {
+    let cls = 'progress-dot';
+    if (i < current) cls += ' done';
+    else if (i === current) cls += ' current';
+    html += `<div class="${cls}"></div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderQuestion() {
+  answered = false;
+  selectedIndex = null;
+  const q = DAY.quiz[current];
+  let html = renderProgress();
+  html += `<div class="question-text">${q.question}</div>`;
+  html += '<div class="options">';
+  q.options.forEach((opt, i) => {
+    html += `<button class="option" data-index="${i}">${opt}</button>`;
+  });
+  html += '</div>';
+  html += '<div id="feedback-slot"></div>';
+  html += '<div class="next-btn"><button id="next-question-btn">Ďalej · Weiter</button></div>';
+  quizCard.innerHTML = html;
+
+  quizCard.querySelectorAll('.option').forEach(btn => {
+    btn.addEventListener('click', () => selectAnswer(parseInt(btn.dataset.index)));
+  });
+  document.getElementById('next-question-btn').addEventListener('click', goNext);
+}
+
+function selectAnswer(index) {
+  if (answered) return;
+  answered = true;
+  selectedIndex = index;
+  const q = DAY.quiz[current];
+  results[current] = index === q.correct_index;
+
+  quizCard.querySelectorAll('.option').forEach((btn, i) => {
+    btn.disabled = true;
+    if (i === q.correct_index) btn.classList.add('correct');
+    else if (i === index) btn.classList.add('incorrect');
+  });
+
+  const slot = document.getElementById('feedback-slot');
+  if (results[current]) {
+    slot.innerHTML = '<div class="feedback correct">Správne! · Richtig!</div>';
+  } else {
+    slot.innerHTML = '<div class="feedback incorrect">Nesprávne · Nicht ganz — die richtige Antwort ist markiert.</div>';
+  }
+
+  document.getElementById('next-question-btn').classList.add('visible');
+}
+
+function goNext() {
+  if (current < DAY.quiz.length - 1) {
+    current++;
+    renderQuestion();
+  } else {
+    renderCompletion();
+  }
+}
+
+function renderCompletion() {
+  const score = results.filter(Boolean).length;
+  const total = DAY.quiz.length;
+  let msg;
+  if (score === total) msg = "Rozumieš dnešnému evanjeliu veľmi dobre. · Du hast das heutige Evangelium sehr gut verstanden.";
+  else if (score >= total / 2) msg = "Dobrá práca. Zajtra znova. · Gute Arbeit. Bis morgen wieder.";
+  else msg = "Skús si text ešte raz prečítať vyššie. · Lies den Text oben noch einmal.";
+
+  let html = `<div class="completion">
+    <div class="completion-eyebrow">Dnešný výsledok · Heutiges Ergebnis</div>
+    <div class="completion-score">${score}/${total}</div>
+    <div class="completion-msg">${msg}</div>
+    <div class="review-label">Prehľad · Übersicht</div>`;
+
+  DAY.quiz.forEach((q, i) => {
+    const right = results[i];
+    html += `<div class="review-q">
+      <div class="q-title">${q.question}</div>
+      <div class="q-answer ${right ? 'right' : 'wrong'}">${q.options[q.correct_index]}</div>
+    </div>`;
+  });
+
+  html += `</div>`;
+  quizCard.innerHTML = html;
+}
+
+renderQuestion();
+</script>
+
+</body>
+</html>
