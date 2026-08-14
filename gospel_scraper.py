@@ -103,7 +103,12 @@ def parse_sk_page(md_text: str, d: date, url: str) -> GospelText:
     '### Evanjelium...' section on the page are always the primary/normal
     day's feast and Gospel; later ones are vigil/optional-memorial variants.
     Do NOT take the last '###' section - that grabs the wrong Gospel on
-    these multi-formulary days."""
+    these multi-formulary days.
+
+    Raises ValueError (with the found heading list, for diagnosis) if no
+    '### Evanjelium...' section is found at all - rather than returning a
+    GospelText with text=None and letting the failure surface as a cryptic
+    AttributeError three modules downstream."""
     h1_sections = _extract_markdown_sections(md_text, "#")
     feast = h1_sections[0]["heading"] if h1_sections else None
 
@@ -114,7 +119,13 @@ def parse_sk_page(md_text: str, d: date, url: str) -> GospelText:
             gospel_section = s
             break
     if gospel_section is None:
-        return GospelText("sk", d.isoformat(), url, feast, None, None, None, None)
+        found = [s["heading"] for s in subsections]
+        raise ValueError(
+            f"parse_sk_page: no '### Evanjelium...' section found for {d.isoformat()} "
+            f"at {url}. Headings found on page: {found!r}. The page structure may have "
+            f"changed, or this date's content may not be published yet - try again later "
+            f"or inspect the URL directly."
+        )
 
     heading = gospel_section["heading"]
     citation = None
@@ -156,13 +167,26 @@ def parse_sk_page(md_text: str, d: date, url: str) -> GospelText:
 def parse_de_page(md_text: str, d: date, url: str) -> GospelText:
     """Parse a Vatican News DE page. Gospel section is '## Evangelium vom Tag',
     found positionally by matching 'evangelium' in the heading (case-
-    insensitive), which is stable regardless of exact heading punctuation."""
+    insensitive), which is stable regardless of exact heading punctuation.
+
+    Takes the FIRST matching section (consistent with parse_sk_page's
+    approach) in case a page ever carries multiple formularies (e.g. a
+    vigil Mass + day Mass on a major solemnity) - untested against a real
+    multi-formulary DE page so far, but matching the SK parser's proven-
+    correct convention rather than risking picking a later/wrong one.
+
+    Raises ValueError (with the found heading list, for diagnosis) if no
+    matching section is found at all, rather than returning a GospelText
+    with text=None and letting the failure surface as a cryptic
+    AttributeError three modules downstream - this is what actually
+    happened on 15 Aug 2026 (Assumption solemnity) in production."""
     sections = _extract_markdown_sections(md_text, "##")
 
     gospel_section = None
     for s in sections:
         if "evangelium" in s["heading"].lower():
             gospel_section = s
+            break
 
     feast = None
     fm = re.search(r"Datum\d{2}/\d{2}/\d{4}\s*\n\s*(.+)", md_text)
@@ -170,7 +194,14 @@ def parse_de_page(md_text: str, d: date, url: str) -> GospelText:
         feast = fm.group(1).strip()
 
     if gospel_section is None:
-        return GospelText("de", d.isoformat(), url, feast, None, None, None, None)
+        found = [s["heading"] for s in sections]
+        raise ValueError(
+            f"parse_de_page: no 'Evangelium...' section found for {d.isoformat()} "
+            f"at {url}. Headings found on page: {found!r}. The page structure may have "
+            f"changed for this date (e.g. a major solemnity formatted differently), or "
+            f"this date's content may not be published yet - try again later or inspect "
+            f"the URL directly."
+        )
 
     heading = gospel_section["heading"]
     body = gospel_section["body"].strip()
