@@ -24,10 +24,26 @@ Pairing logic:
      etc.), same_day_de is still returned for reference, but callers should
      source the German text for the SK citation from a citation-lookup
      Bible source instead (not implemented here - see NOTE at bottom).
+
+IMPORTANT PARSING NOTE: this module parses the REAL HTML the sites return
+(via BeautifulSoup) - not a Markdown-converted representation. An earlier
+version of this file was built and tested against Markdown text obtained
+through a browsing tool that auto-converts pages before they're ever seen,
+which does NOT match what Python's `requests` actually receives (raw HTML
+with <h1>/<h2>/<h3> tags, not '#'/'##'/'###' text). That mismatch was never
+exercised until this ran for real against live pages - see the git history
+/ conversation for how that surfaced. This version has NOT been verified
+against a real live fetch either (this development sandbox cannot reach
+these domains), only against hand-built HTML fixtures approximating the
+structure seen via the browsing tool - so some iteration after a real run
+is still expected. The ValueError raised when no matching section is found
+includes the actual heading tags/text found, specifically to make that
+next round of debugging fast rather than another blind guess.
 """
 
 import re
 import requests
+from bs4 import BeautifulSoup
 from datetime import date
 from dataclasses import dataclass
 from typing import Optional
@@ -35,6 +51,19 @@ from typing import Optional
 
 SK_URL_TEMPLATE = "https://svatepismo.sk/liturgicke-citanie-na-den/{y:04d}-{m:02d}-{d:02d}"
 DE_URL_TEMPLATE = "https://www.vaticannews.va/de/tagesevangelium-und-tagesliturgie/{y}/{m:02d}/{d:02d}.html"
+
+HEADING_TAGS = ("h1", "h2", "h3", "h4")
+
+# Text fragments that mark the end of real content and the start of
+# site boilerplate (nav links, attribution, cookie/copyright text) - used
+# as a hard stop when collecting paragraph text, since boilerplate isn't
+# always separated from content by its own heading tag.
+SK_BOILERPLATE_MARKERS = ("použité z webu", "Nasledujúci deň", "Predošlý deň")
+DE_BOILERPLATE_MARKERS = (
+    "Einheitsübersetzung der Heiligen Schrift",
+    "Dein Beitrag zu einer großen Mission",
+    "Copyright ©",
+)
 
 # Citation book-abbreviation differences between languages worth normalizing.
 # Matthew/Mark/Luke abbreviations are shared (Mt, Mk, Lk); John differs
@@ -73,84 +102,95 @@ def _normalize_citation(raw: str, lang: str) -> Optional[str]:
     return f"{book}{chapter}:{verses_digits}"
 
 
-def _extract_markdown_sections(md_text: str, heading_level: str = "##") -> list[dict]:
-    """Split markdown-ish text into sections at a given heading level.
-    Returns [{'heading': str, 'body': str}] in document order."""
-    pattern = re.compile(rf"^{re.escape(heading_level)}\s+(.+)$", re.MULTILINE)
-    matches = list(pattern.finditer(md_text))
-    sections = []
-    for i, m in enumerate(matches):
-        start = m.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(md_text)
-        sections.append({"heading": m.group(1).strip(), "body": md_text[start:end].strip()})
-    return sections
+def _find_heading_and_paragraphs(
+    soup: BeautifulSoup, keyword: str, boilerplate_markers: tuple[str, ...]
+) -> tuple[Optional[str], Optional[list[str]], list[tuple[str, str]]]:
+    """Find the first heading tag (checked across HEADING_TAGS, in document
+    order) whose text STARTS WITH `keyword` (case-insensitive, not just
+    "contains" - a page's generic nav/title heading can legitimately
+    contain the word "evanjelium"/"evangelium" as part of a longer phrase
+    without being the actual Gospel section; anchoring to the start avoids
+    matching those). Returns
+    (heading_text, paragraph_texts, all_headings_found) where
+    all_headings_found is [(tag_name, text), ...] for every heading on the
+    page - always returned so callers can build a useful error message
+    whether or not the target was found.
+
+    Paragraph collection stops at whichever comes first: the next heading
+    tag (any level in HEADING_TAGS), or a paragraph matching one of
+    boilerplate_markers (attribution/nav text that isn't always under its
+    own heading)."""
+    all_headings = soup.find_all(HEADING_TAGS)
+    all_headings_found = [(h.name, h.get_text(" ", strip=True)) for h in all_headings]
+
+    target = None
+    for h in all_headings:
+        if h.get_text(" ", strip=True).lower().startswith(keyword.lower()):
+            target = h
+            break
+
+    if target is None:
+        return None, None, all_headings_found
+
+    heading_text = target.get_text(" ", strip=True)
+    paragraphs: list[str] = []
+    for elem in target.find_all_next():
+        if elem in all_headings:
+            break
+        if getattr(elem, "name", None) == "p":
+            text = elem.get_text(" ", strip=True)
+            if not text:
+                continue
+            if any(marker in text for marker in boilerplate_markers):
+                break
+            paragraphs.append(text)
+
+    return heading_text, paragraphs, all_headings_found
 
 
-def parse_sk_page(md_text: str, d: date, url: str) -> GospelText:
-    """Parse a svatepismo.sk page (markdown-rendered).
+def parse_sk_page(html: str, d: date, url: str) -> GospelText:
+    """Parse a svatepismo.sk page's real HTML.
 
     The feast/day name (e.g. "5. nedeľa v Cezročnom období" or "Svätého
-    Maximiliána Máriu Kolbeho, kňaza a mučeníka") lives in the page's H1,
-    separate from the "## Nedeľa 08. 02. 2026" day-of-week/date heading -
-    take the H1, not the H2, or you get the date label instead of the
-    actual feast name.
+    Maximiliána Máriu Kolbeho, kňaza a mučeníka") is the page's <h1> -
+    separate from a "Nedeľa 08. 02. 2026" day-of-week/date label elsewhere
+    on the page.
 
     IMPORTANT: some days carry more than one Mass formulary - e.g. a weekday
     memorial PLUS a vigil Mass for the next day's solemnity (confirmed on a
     real page: 14 Aug 2026 has both the weekday memorial for St Maximilian
-    Kolbe AND the Assumption vigil, each with their own '### Evanjelium...'
-    section and their own H1 feast heading). The FIRST H1 and FIRST
-    '### Evanjelium...' section on the page are always the primary/normal
-    day's feast and Gospel; later ones are vigil/optional-memorial variants.
-    Do NOT take the last '###' section - that grabs the wrong Gospel on
-    these multi-formulary days.
+    Kolbe AND the Assumption vigil, each with their own Evanjelium heading).
+    Taking the FIRST matching heading on the page is what makes this pick
+    the primary/normal day's Gospel rather than a vigil/optional variant.
 
-    Raises ValueError (with the found heading list, for diagnosis) if no
-    '### Evanjelium...' section is found at all - rather than returning a
-    GospelText with text=None and letting the failure surface as a cryptic
-    AttributeError three modules downstream."""
-    h1_sections = _extract_markdown_sections(md_text, "#")
-    feast = h1_sections[0]["heading"] if h1_sections else None
+    Raises ValueError (with every heading found on the page, for diagnosis)
+    if no Evanjelium heading is found at all."""
+    soup = BeautifulSoup(html, "html.parser")
 
-    subsections = _extract_markdown_sections(md_text, "###")
-    gospel_section = None
-    for s in subsections:
-        if s["heading"].lower().startswith("evanjelium"):
-            gospel_section = s
-            break
-    if gospel_section is None:
-        found = [s["heading"] for s in subsections]
+    h1 = soup.find("h1")
+    feast = h1.get_text(" ", strip=True) if h1 else None
+
+    heading, paragraphs, all_headings = _find_heading_and_paragraphs(
+        soup, "evanjelium", SK_BOILERPLATE_MARKERS
+    )
+    if heading is None:
         raise ValueError(
-            f"parse_sk_page: no '### Evanjelium...' section found for {d.isoformat()} "
-            f"at {url}. Headings found on page: {found!r}. The page structure may have "
-            f"changed, or this date's content may not be published yet - try again later "
-            f"or inspect the URL directly."
+            f"parse_sk_page: no heading starting with 'evanjelium' found for {d.isoformat()} "
+            f"at {url}. Headings found on page: {all_headings!r}. The page structure may "
+            f"have changed, or this date's content may not be published yet - try again "
+            f"later or inspect the URL directly."
         )
 
-    heading = gospel_section["heading"]
     citation = None
     m = CITATION_RE.search(heading)
     if m:
         citation = m.group(0).strip()
 
-    body_lines = [ln for ln in gospel_section["body"].splitlines()]
-    body_lines = [ln for ln in body_lines if ln.strip() not in ("", "---")]
-    body_lines = [ln for ln in body_lines if not ln.strip().startswith("*Alelujový verš")]
-    # Being the last section on the page, this can also pick up the site's
-    # trailing attribution note ("Liturgické čítania sú použité z webu...")
-    # and any nav link after it - cut everything from that line onward.
-    cut_idx = None
-    for i, ln in enumerate(body_lines):
-        if (
-            "použité z webu" in ln
-            or ln.strip().startswith("[Nasledujúci")
-            or ln.strip().startswith("#### ")  # "Dnešný deň obsahuje tieto varianty" marker
-        ):
-            cut_idx = i
-            break
-    if cut_idx is not None:
-        body_lines = body_lines[:cut_idx]
-    text = "\n".join(body_lines).strip()
+    # Drop the alleluia verse line (present as the first paragraph before
+    # the pericope title) - it's a liturgical acclamation, not part of the
+    # Gospel text itself.
+    paragraphs = [p for p in paragraphs if not p.lower().startswith("alelujový verš")]
+    text = "\n".join(paragraphs).strip()
 
     return GospelText(
         lang="sk",
@@ -164,54 +204,55 @@ def parse_sk_page(md_text: str, d: date, url: str) -> GospelText:
     )
 
 
-def parse_de_page(md_text: str, d: date, url: str) -> GospelText:
-    """Parse a Vatican News DE page. Gospel section is '## Evangelium vom Tag',
-    found positionally by matching 'evangelium' in the heading (case-
-    insensitive), which is stable regardless of exact heading punctuation.
+def parse_de_page(html: str, d: date, url: str) -> GospelText:
+    """Parse a Vatican News DE page's real HTML. Gospel section is the
+    heading containing 'evangelium' (case-insensitive) - e.g. 'Evangelium
+    vom Tag'.
 
-    Takes the FIRST matching section (consistent with parse_sk_page's
-    approach) in case a page ever carries multiple formularies (e.g. a
-    vigil Mass + day Mass on a major solemnity) - untested against a real
-    multi-formulary DE page so far, but matching the SK parser's proven-
-    correct convention rather than risking picking a later/wrong one.
-
-    Raises ValueError (with the found heading list, for diagnosis) if no
-    matching section is found at all, rather than returning a GospelText
-    with text=None and letting the failure surface as a cryptic
-    AttributeError three modules downstream - this is what actually
-    happened on 15 Aug 2026 (Assumption solemnity) in production."""
-    sections = _extract_markdown_sections(md_text, "##")
-
-    gospel_section = None
-    for s in sections:
-        if "evangelium" in s["heading"].lower():
-            gospel_section = s
-            break
+    Raises ValueError (with every heading found on the page, for diagnosis)
+    if no matching heading is found at all - e.g. if a major solemnity is
+    formatted differently, or the date's content isn't published yet."""
+    soup = BeautifulSoup(html, "html.parser")
 
     feast = None
-    fm = re.search(r"Datum\d{2}/\d{2}/\d{4}\s*\n\s*(.+)", md_text)
-    if fm:
-        feast = fm.group(1).strip()
+    date_marker = soup.find(string=re.compile(r"Datum\d{2}/\d{2}/\d{4}"))
+    if date_marker is not None:
+        # The feast/day name is the next non-empty text node after the
+        # "DatumDD/MM/YYYY" marker in the page's text flow. Call find_next
+        # on the string node itself (not its parent tag) - calling it on
+        # the parent can return the marker's own text again instead of
+        # advancing past it.
+        nxt = date_marker.find_next(string=True)
+        while nxt is not None and not nxt.strip():
+            nxt = nxt.find_next(string=True)
+        if nxt:
+            feast = nxt.strip()
 
-    if gospel_section is None:
-        found = [s["heading"] for s in sections]
+    heading, paragraphs, all_headings = _find_heading_and_paragraphs(
+        soup, "evangelium", DE_BOILERPLATE_MARKERS
+    )
+    if heading is None:
         raise ValueError(
-            f"parse_de_page: no 'Evangelium...' section found for {d.isoformat()} "
-            f"at {url}. Headings found on page: {found!r}. The page structure may have "
-            f"changed for this date (e.g. a major solemnity formatted differently), or "
-            f"this date's content may not be published yet - try again later or inspect "
-            f"the URL directly."
+            f"parse_de_page: no heading starting with 'evangelium' found for {d.isoformat()} "
+            f"at {url}. Headings found on page: {all_headings!r}. The page structure may "
+            f"have changed for this date (e.g. a major solemnity formatted differently), "
+            f"or this date's content may not be published yet - try again later or "
+            f"inspect the URL directly."
         )
 
-    heading = gospel_section["heading"]
-    body = gospel_section["body"].strip()
-    lines = [ln for ln in body.splitlines() if ln.strip()]
     citation = None
-    if len(lines) >= 2:
-        m = CITATION_RE.search(lines[1])
+    lines = list(paragraphs)
+    if lines:
+        m = CITATION_RE.search(lines[0])
         if m:
             citation = m.group(0).strip()
-            lines = lines[2:]
+            lines = lines[1:]
+        elif len(lines) >= 2:
+            m = CITATION_RE.search(lines[1])
+            if m:
+                citation = m.group(0).strip()
+                lines = lines[2:]
+
     text = "\n".join(lines).strip()
 
     return GospelText(
