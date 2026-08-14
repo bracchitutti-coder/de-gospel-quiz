@@ -1,0 +1,48 @@
+name: Daily gospel quiz + email
+
+on:
+  schedule:
+    # 05:00 UTC = 06:00/07:00 CET/CEST (Slovakia/Germany) depending on DST.
+    # Adjust if you want a fixed local time year-round.
+    - cron: "0 5 * * *"
+  workflow_dispatch: {}  # adds a manual "Run workflow" button for testing
+
+permissions:
+  contents: write  # needed to commit the generated page back to the repo
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Run daily pipeline (publish quiz page + send email)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          # Auto-derived from repo context - no hardcoding needed, works
+          # the same whether this runs from the original repo or a fork.
+          # Assumes GitHub Pages is set to serve from the docs/ folder,
+          # which makes docs/quiz/<date>.html reachable at .../quiz/<date>.html.
+          QUIZ_BASE_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/quiz"
+        run: python run_daily.py
+
+      - name: Commit and push generated page
+        run: |
+          git config user.name "daily-quiz-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/quiz/
+          git diff --staged --quiet || git commit -m "Daily quiz: $(date -u +%Y-%m-%d)"
+          git push
