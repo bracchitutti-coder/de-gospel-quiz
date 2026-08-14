@@ -187,19 +187,24 @@ Dnesny kviz / Heutiges Quiz:
 def send_email(day_data: dict, quiz_url: str) -> None:
     """Sends via SMTP using credentials from environment variables:
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, EMAIL_TO.
-    Not run automatically - call explicitly once credentials are set up."""
+    EMAIL_TO supports multiple recipients as a comma-separated list, e.g.
+    "person1@example.com, person2@example.com" (surrounding spaces are
+    trimmed automatically). Not run automatically - call explicitly once
+    credentials are set up."""
     host = os.environ["SMTP_HOST"]
     port = int(os.environ.get("SMTP_PORT", "587"))
     user = os.environ["SMTP_USER"]
     password = os.environ["SMTP_PASSWORD"]
     from_addr = os.environ.get("EMAIL_FROM", user)
-    to_addr = os.environ["EMAIL_TO"]
+    to_addrs = [addr.strip() for addr in os.environ["EMAIL_TO"].split(",") if addr.strip()]
+    if not to_addrs:
+        raise ValueError("EMAIL_TO is set but contains no valid addresses after parsing.")
 
     msg = MIMEMultipart("alternative")
     feast = day_data.get("feast_sk") or ""
     msg["Subject"] = f"Evanjelium dňa · {day_data['date']} · {feast}"
     msg["From"] = from_addr
-    msg["To"] = to_addr
+    msg["To"] = ", ".join(to_addrs)
 
     msg.attach(MIMEText(render_email_text(day_data, quiz_url), "plain", "utf-8"))
     msg.attach(MIMEText(render_email_html(day_data, quiz_url), "html", "utf-8"))
@@ -207,7 +212,7 @@ def send_email(day_data: dict, quiz_url: str) -> None:
     with smtplib.SMTP(host, port) as server:
         server.starttls()
         server.login(user, password)
-        server.sendmail(from_addr, [to_addr], msg.as_string())
+        server.sendmail(from_addr, to_addrs, msg.as_string())
 
 
 if __name__ == "__main__":
