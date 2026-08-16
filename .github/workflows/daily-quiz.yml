@@ -4,7 +4,7 @@ on:
   schedule:
     # 05:00 UTC = 06:00/07:00 CET/CEST (Slovakia/Germany) depending on DST.
     # Adjust if you want a fixed local time year-round.
-    - cron: "0 5 * * *"
+    - cron: "0 3 * * *"
   workflow_dispatch: {}  # adds a manual "Run workflow" button for testing
 
 permissions:
