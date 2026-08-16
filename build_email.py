@@ -68,6 +68,16 @@ def render_email_html(day_data: dict, quiz_url: str) -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Evanjelium dňa · {escape(d)}</title>
+<style>
+  /* Supported by Apple Mail, Gmail (app + webmail), Outlook mobile.
+     Outlook desktop ignores <style> entirely and will keep showing the
+     two columns side by side at their fixed width - narrower than ideal
+     there, but still fully readable, not broken. */
+  @media only screen and (max-width: 480px) {{
+    .lang-col {{ display: block !important; width: 100% !important; }}
+    .lang-col-pad {{ padding-bottom: 18px !important; }}
+  }}
+</style>
 </head>
 <body style="margin:0;padding:0;background-color:{PAPER};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:{PAPER};">
@@ -92,25 +102,31 @@ def render_email_html(day_data: dict, quiz_url: str) -> str:
     </td>
   </tr>
 
-  <!-- Slovak text -->
+  <!-- Gospel text: side by side on wide clients, stacks on narrow via the
+       media query above (mobile Gmail/Apple Mail); Outlook desktop keeps
+       the two columns fixed-width regardless, still readable. -->
   <tr>
     <td style="padding:24px 28px 4px;">
-      <p style="margin:0 0 8px;font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:bold;
-                letter-spacing:1px;text-transform:uppercase;color:{GOLD};">Slovensky</p>
-      <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.6;color:{INK};">
-        {sk_text}
-      </p>
-    </td>
-  </tr>
-
-  <!-- German text -->
-  <tr>
-    <td style="padding:20px 28px 4px;">
-      <p style="margin:0 0 8px;font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:bold;
-                letter-spacing:1px;text-transform:uppercase;color:{GOLD};">Deutsch</p>
-      <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.6;color:{INK};">
-        {de_text}
-      </p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td class="lang-col lang-col-pad" width="50%" valign="top"
+              style="padding-right:14px;">
+            <p style="margin:0 0 8px;font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:bold;
+                      letter-spacing:1px;text-transform:uppercase;color:{GOLD};">Slovensky</p>
+            <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:1.55;color:{INK};">
+              {sk_text}
+            </p>
+          </td>
+          <td class="lang-col" width="50%" valign="top"
+              style="padding-left:14px;">
+            <p style="margin:0 0 8px;font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:bold;
+                      letter-spacing:1px;text-transform:uppercase;color:{GOLD};">Deutsch</p>
+            <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:1.55;color:{INK};">
+              {de_text}
+            </p>
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
 
